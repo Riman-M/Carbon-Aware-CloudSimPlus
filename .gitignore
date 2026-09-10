@@ -1,0 +1,71 @@
+# ---------------------------------------------------------------
+# Large input datasets.
+#
+# These are published elsewhere and must not be committed. The Azure
+# vmtable alone is ~0.76 GB, well past GitHub's 100 MB per-file limit,
+# and CarbonCast is redistributable but large. Both are fetched by the
+# instructions in the README instead.
+# ---------------------------------------------------------------
+data/AzureVMTraces/
+data/carboncast/
+*.csv.gz
+*.zip
+
+# Generated traces. Reproducible from prep_traces.py plus the sources
+# above, and regenerated in place by every run.
+data/carbon_intensity.csv
+data/vm_requests.csv
+data/trace_meta.properties
+
+# ---------------------------------------------------------------
+# Results.
+#
+# Keep results/ under version control -- the figures and tables in the
+# paper are derived from it and it is small -- but exclude the scratch
+# file that each run overwrites.
+# ---------------------------------------------------------------
+results/results.csv
+
+# ---------------------------------------------------------------
+# Java / Maven
+# ---------------------------------------------------------------
+target/
+*.class
+*.jar
+dependency-reduced-pom.xml
+
+# ---------------------------------------------------------------
+# LaTeX build artefacts
+# ---------------------------------------------------------------
+*.aux
+*.bbl
+*.blg
+*.fdb_latexmk
+*.fls
+*.log
+*.out
+*.synctex.gz
+*.toc
+*.lof
+*.lot
+*.spl
+paper/main.pdf
+paper/elsarticle-main.pdf
+
+# ---------------------------------------------------------------
+# Python
+# ---------------------------------------------------------------
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# ---------------------------------------------------------------
+# Editors and OS
+# ---------------------------------------------------------------
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
+desktop.ini

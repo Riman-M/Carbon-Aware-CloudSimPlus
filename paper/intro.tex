@@ -1,0 +1,105 @@
+\section{Introduction}
+\label{sec:intro}
+
+The carbon intensity of electricity varies by hour and by location. Scheduling
+computation to exploit that variation, by deferring work to cleaner hours or by
+relocating it to cleaner grids, is now a well-established line of research, and
+the reductions reported for it are large. They are also inconsistent. Studies
+of temporal shifting report reductions that vary substantially with the region
+examined \cite{wiesner2021letswait}, and studies of combined spatial and temporal
+shifting report ranges wider still. Zanotto et
+al.~\cite{zanotto2025usercentric}, whose formulation this paper takes as its
+starting point, report a 79.25\,\% reduction against a carbon-agnostic baseline
+in their most permissive configuration and 13.46\,\% in their most restrictive
+one. Work examining the limits of these techniques has established that headline
+figures depend heavily on the assumptions behind them
+\cite{sukprasert2024limitations}, but the parameters responsible have not been
+isolated individually.
+
+The two configurations that produce the 13\,\% and the 79\,\% differ in two
+respects at once: the permissive one allows fifty simultaneous jobs per region
+where the restrictive one allows five, and it draws on a different set of
+candidate regions. Neither parameter is varied alone, so the six-fold difference
+cannot be attributed to either. The same study is explicit that the per-region
+concurrency limit is consequential and that its estimation is left for future
+work. This paper takes up that question, and finds that the answer accounts for
+much of the range.
+
+This paper argues that a substantial part of the variation is not a property of
+the schedulers at all. It is produced by three choices in the evaluation which
+are seldom reported, and each of which moves the reported figure by more than
+the difference between the policies being compared.
+
+The first is capacity. A scheduler that defers a request to a cleaner hour can
+do so only if capacity is free in that hour. Evaluations that place a workload
+into an effectively unconstrained pool measure the benefit of flexibility under
+the most favourable condition available, and this condition is rarely stated.
+We find that widening the deadline margin from 6\,h to 48\,h reduces emissions
+by 32.1\,\% when the system runs at 13\,\% utilisation and by 0.9\,\% when it
+runs at 82\,\%, a difference of more than thirty-fold produced entirely by how
+heavily the system is loaded.
+
+The second is the origin region assigned to a time-shifting policy. Such a
+policy holds work in one region and moves it only in time, so its result is
+partly a statement about that region. We find that the correlation between the
+mean carbon intensity of the origin region and the emissions the policy achieves
+is between $+0.941$ and $+0.998$, whereas the correlation with the region's
+diurnal amplitude, the quantity the policy actually acts upon, is
+indistinguishable from zero. Across the seven candidate origins in our primary
+region set, the same policy yields results spanning a factor of 3.6. A single
+reported figure is one draw from that spread, and the conventional choice of
+origin selects the cleanest available grid.
+
+The third is the composition of the candidate region set. Running an identical
+workload and an identical scheduler at matched utilisation over two region sets,
+we find that one reports approximately twice the reduction of the other at every
+operating point. The set that reports more contains a region 4.7 times cleaner
+than its nearest rival, so that a single destination is optimal for nearly every
+request; the set that reports less does not.
+
+These are not competing explanations for the spread in the literature but
+complementary ones, and they share a mechanism. Across every configuration we
+examine, the correlation between the fraction of the workload placed in the
+busiest region and total emissions is below $-0.93$. Carbon-aware placement
+policies work by concentrating load into the cleanest reachable grid; capacity
+governs how much can be concentrated, the origin region governs where a
+time-shifting policy starts from, and the region set governs how much is to be
+gained by concentrating at all. The reductions these policies report are, to
+first approximation, measurements of the concentration they achieve.
+
+The consequence for practice is that the largest reductions are obtained in
+precisely the configurations least likely to be deployable. At the lowest
+utilisation we examine, the policies achieving the largest reductions place
+between 95\,\% and 98\,\% of the workload in a single region.
+
+Our contributions are as follows.
+
+\begin{itemize}
+\item We isolate the interaction between capacity utilisation and deadline
+      margin, and show that the value of deadline flexibility is conditional on
+      load rather than being a property of the workload or the scheduler
+      (Section~\ref{sec:res-capacity}).
+\item We show that the reported performance of a time-shifting policy is
+      determined by its origin region rather than by the temporal structure it
+      exploits, and quantify the resulting spread
+      (Section~\ref{sec:res-home}).
+\item We show that reported savings scale with the degree to which the candidate
+      region set contains a dominant clean region, holding workload, scheduler
+      and hardware fixed (Section~\ref{sec:res-regionset}).
+\item We establish that these results hold across five workload samples, two
+      seasons, two workload classes, two region sets and two host power models,
+      and we report the accounting basis on which each is measured
+      (Section~\ref{sec:res-robustness}).
+\end{itemize}
+
+We adopt the host platform, the simulator, the carbon-agnostic baseline, the
+per-region concurrency constraint and the deadline-margin levels of Zanotto et
+al.~\cite{zanotto2025usercentric}, so that differences between their reported
+figures and ours cannot be attributed to any of those. Where we depart from them
+is in varying one parameter at a time, in sweeping the origin region of the
+time-shifting policy rather than fixing it, and in reporting emissions on an
+explicitly stated accounting basis. The evaluation
+uses published hourly emission factors \cite{maji2022carboncast} and a
+production virtual machine trace \cite{cortez2017resourcecentral}, and each
+experimental cell is checked to confirm that every virtual machine executed in
+the region its planner selected.
