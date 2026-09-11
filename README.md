@@ -1,101 +1,121 @@
-# Carbon-Aware Scheduling on CloudSim Plus
+# carbon-aware-cloudsimplus
 
-A CloudSim Plus harness for comparing carbon-aware VM scheduling policies across
-regions, under explicit capacity and deadline constraints.
+Simulation harness and analysis code for a study of what determines reported
+savings in carbon-aware virtual machine scheduling.
 
-Deliberately unbranded. `CarbonSim` collides with EDF's emissions-trading game
-(carbonsim.org), Bancor's `carbon-simulator`, and Hans, Zhao & Lee's *CarbonSim*
-(IGSC 2026, `github.com/pittcps/carbonsim`) in this exact area. `CarbonBench` is
-Benson et al.'s published atmospheric-transport benchmark (JAMES 2025). A
-descriptive name cannot collide confusingly and is more discoverable to anyone
-searching for CloudSim Plus carbon extensions. A branded name is worth having
-once there is a *method* to name — see the follow-on work.
+The study isolates three parameters that evaluations of carbon-aware scheduling
+seldom report — capacity utilisation, the origin region assigned to a
+time-shifting policy, and the composition of the candidate region set — and
+measures the effect of each on reported emissions reductions, holding the
+scheduler, workload and hardware fixed.
 
-## Paper A scope
-
-**Claim.** Reported savings for carbon-aware scheduling are largely determined by
-two parameters that papers frequently leave unstated: the per-region concurrency
-cap and the deadline margin. We quantify that dependence for non-preemptible VM
-workloads and show how much of the headline number survives once the baseline,
-the admitted workload, and the measurement window are held fixed.
-
-**Deliberately out of scope** (these are Paper B):
-- forecasting and forecast error — everything here uses perfect foresight, so the
-  capacity and deadline effects are not confounded with prediction quality
-- risk-aware or chance-constrained objectives
-- marginal carbon intensity
-
-**Positioning.** CarbonFlex (Hanafy et al., 2025) sweeps cluster capacity and
-delay for *elastic parallel batch jobs* on AWS ParallelCluster. This study covers
-*non-preemptible, fixed-size VMs* across *multiple regions* in simulation — a
-different system model, and the one used by Zanotto et al. (FGCS 2026), whose
-results motivate the question.
-
-## Three design decisions that make the comparison valid
-
-1. **Every policy places every request.** Policies may not reject. When the cap
-   makes all in-deadline slots infeasible, the planner falls back past the
-   deadline and the overrun is reported separately. Comparing total emissions
-   across policies that admit different workloads is meaningless — a policy can
-   "win" by running less work. This bug was present in the first version and
-   inflated time-shift savings to 63% while it silently dropped 74% of requests.
-
-2. **Identical measurement window.** `sim.terminateAt()` is set from the trace
-   horizon, so a policy that defers work does not accrue extra idle energy simply
-   by running longer. Without this, deferral looks expensive for the wrong reason.
-
-3. **Total *and* dynamic emissions.** Idle power is real and stays in the total,
-   but it is also reported separately so it cannot swamp the differences that
-   scheduling actually controls. A fleet sized far above the cap makes every
-   policy look identical; `Simulator.hostsFor()` sizes hosts to the cap instead.
-
-## Layout
+## What is here
 
 ```
-core/CarbonMeter.java     power x CI integration; the only place units convert
-core/RegionLedger.java    alloc[j][t] and the M_j cap; reports concentration
-core/Metrics.java         everything reported per experiment cell
-core/Model.java           VmRequest / Placement
-policy/Planners.java      round-robin, space, time, space+time, shared fallback
-trace/CarbonTrace.java    hourly CI per region
-trace/RequestTrace.java   VM requests
-Simulator.java            runs one cell
-ExperimentRunner.java     sweeps policy x region-set x cap x margin -> CSV
-scripts/analyze.py        CSV -> figures and LaTeX table
+src/main/java/org/carbonaware/   CloudSim Plus harness
+  Simulator.java                 builds and runs one experimental cell
+  ExperimentRunner.java          sweeps the factor grid, writes results CSV
+  core/CarbonMeter.java          power x carbon intensity integration
+  core/RegionLedger.java         per-region concurrency ledger
+  core/SpecPower.java            measured SPECpower host power curve
+  core/Metrics.java              per-cell result record
+  policy/Planners.java           round-robin, space, WaitAwhile, space+time
+  trace/                         carbon and request trace loaders
+scripts/
+  prep_traces.py                 builds traces from CarbonCast and Azure inputs
+  analyze_robust.py              summarises the seed-robustness results
+  make_figures.py                generates the paper figures
+results/                         result CSVs behind every figure and table
 ```
 
-CloudSim Plus hooks used: `broker.setDatacenterMapper(...)` for space-shifting,
-`vm.setSubmissionDelay(...)` for time-shifting. Both are stock API — the
-framework is a dependency, not a fork.
+## Requirements
 
-## Running
+- Java 17 and Maven
+- Python 3 with pandas and matplotlib
+- CloudSim Plus 8.5.7 (resolved by Maven)
 
-```bash
-python3 scripts/prep_traces.py --out data --hours 720 --requests 1000
+## Input data
+
+Neither dataset is redistributed here; both are published and freely available.
+
+Fetch both with:
+
+```
+python scripts/fetch_data.py --all
+```
+
+The script clones CarbonCast shallowly and copies out the region files, then
+downloads and decompresses the Azure trace. It skips anything already present,
+so it is safe to re-run.
+
+**Carbon intensity.** CarbonCast, https://github.com/carbonfirst/CarbonCast.
+Per-region `<REGION>_lifecycle_emissions.csv` files go in `data/carboncast/`.
+The study uses the seven US regions BPAT, CISO, ERCO, ISNE, NYISO, PJM and FPL,
+and the five European regions SE, ES, DE, NL and PL.
+
+**Virtual machine requests.** Azure Public Dataset,
+https://github.com/Azure/AzurePublicDataset. `vmtable.csv` goes in
+`data/AzureVMTraces/`. The file is roughly 0.76 GB and is deliberately excluded
+from version control.
+
+The study uses release V2 (2019), whose core and memory fields are *buckets*
+rather than exact values, with the highest recorded as `>24` cores and `>64` GB.
+`prep_traces.py` maps these to 30 and 70, following the dataset's own published
+analysis, so virtual machines in the top buckets are modelled at a lower bound
+on their true size. Rows whose core or memory fields cannot be read are counted
+and reported rather than skipped silently. Pass `--azure-version v1` to
+`fetch_data.py` for the 2017 trace, which records exact values.
+
+## Reproducing the results
+
+Generate a trace, then run the sweep. Both steps write into `data/`, so they
+must be run in order.
+
+```
+python scripts/prep_traces.py --mode real --carbon-src data/carboncast \
+    --region-set us --vm-src data/AzureVMTraces/vmtable.csv \
+    --out data --hours 720 --requests 1000 --deadline-margin 48 \
+    --min-duration-h 2
+
 mvn compile
-mvn exec:java
-python3 scripts/analyze.py
+mvn exec:java "-Dsweep.regionSets=us" "-Dsweep.caps=56,84,140,350"
 ```
 
-## Before this is a paper
+The sweep axes are overridable with `-Dsweep.caps`, `-Dsweep.margins`,
+`-Dsweep.regionSets` and `-Dsweep.homeRegion=all`, the last of which runs the
+time-shifting policy once per candidate origin region.
 
-- [ ] **Real carbon traces.** The synthetic generator exists so the pipeline runs;
-      synthetic CI is not evidence about real grids. Electricity Maps free tier
-      now gives 5 historical datasets per account — enough for one year across a
-      handful of zones. Note their coverage/pricing has tightened recently.
-- [ ] **Real VM traces.** Azure Resource Central, `github.com/Azure/AzurePublicDataset`.
-- [ ] **Real power figures.** `HOST_MAX_WATTS` / `HOST_STATIC_WATTS` are
-      placeholders. Substitute SPECpower for the Dell XR8620T; the idle/peak
-      ratio drives the consolidation-vs-distribution trade-off.
-- [ ] **Latency region set.** Zanotto's third policy is implemented as a
-      region-set filter but needs real cloudping latency tables.
-- [ ] **Repeat runs.** Round-robin has an arbitrary starting cursor; report
-      variance across seeds rather than single runs.
-- [ ] **Average vs marginal CI.** `CarbonTrace.isMarginal()` returns false and
-      this is printed in the run header. It must appear as a stated limitation.
+`run_all.bat` and `run_robust.bat` run the full experiment matrix and the
+five-seed robustness pass respectively. The robustness pass takes roughly 75
+minutes.
 
-## Known limitations to state in the paper
+```
+python scripts/analyze_robust.py results/robust
+python scripts/make_figures.py results/robust figures
+```
 
-Non-preemptible, fixed-size VMs with uniform power draw over their lifetime —
-inherited from Zanotto et al.'s model. No data-transfer emissions for
-space-shifting. No embodied carbon. Simulation only, no deployment.
+## Notes on the harness
+
+Every experimental cell verifies, after execution, that each virtual machine ran
+in the region its planner selected and that its workload completed inside the
+measurement window. Cells that fail this check are reported as invalid and
+should be excluded from analysis; the `placement_valid` column in the results
+CSV records the outcome.
+
+Emissions are reported on three bases — total, dynamic and attributed — because
+the choice determines what a comparison is able to detect. In a fixed fleet the
+total basis is invariant to placement and cannot distinguish policies. See the
+paper for the definitions.
+
+Host power uses the published SPECpower_ssj2008 curve for the Dell PowerEdge
+XR8620T with Intel Xeon Gold 6433N, the platform modelled by Zanotto et al.
+Because the simulated host matches the benchmarked one, the curve is used
+without rescaling.
+
+## Citation
+
+CITATION TO BE ADDED ON PUBLICATION.
+
+## License
+
+Apache License 2.0, matching CloudSim Plus. See `LICENSE`.
