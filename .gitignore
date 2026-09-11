@@ -69,3 +69,6 @@ venv/
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# Paper sources are kept out of the public repository until publication.
+paper/
